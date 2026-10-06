@@ -21,7 +21,7 @@ The study considers a single IEA 22 MW wake-generating wind turbine and a downst
 
 ## Input data
 
-The input data comes from the same LES simulation used in [the study published in Wind Energy Science, volume 11, page 1679 (2026)](https://wes.copernicus.org/articles/11/1679/2026/wes-11-1679-2026.pdf).
+The input data comes from the same LES simulation used in [Steiner et al., 2026](https://wes.copernicus.org/articles/11/1679/2026/wes-11-1679-2026.pdf).
 
 ## Repository structure
 
