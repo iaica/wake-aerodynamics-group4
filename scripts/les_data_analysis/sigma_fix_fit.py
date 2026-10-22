@@ -10,7 +10,7 @@ Usage (defaults use the test data in data/test_les_data):
     python scripts/les_data_analysis/sigma_fix_fit.py
     python scripts/les_data_analysis/sigma_fix_fit.py \
         --wake path/to/Flowpos_10D.nc --free path/to/Flowpos_n2D.nc \
-        --out-dir plots/sigma_fit --show
+        --out-dir plots/sigma_fit --show --normalize
 
 Run `python scripts/les_data_analysis/sigma_fix_fit.py --help` for all options.
 """
@@ -26,6 +26,16 @@ from scipy.optimize import curve_fit
 REPO = Path(__file__).resolve().parents[2]
 DATA = Path("/work3/emlh/IgnacioJoey/flowdata/")
 
+# Fixed plot ranges, so figures at different downstream distances are comparable
+U_LIM = (4.0, 10.0)            # colormap of U [m/s]
+DEFICIT_LIM = (-4.0, 4.0)      # colormap of U_free - U_wake [m/s]
+FIT_YLIM = (-0.5, 4.5)         # y axis of the Gaussian fit plots [m/s]
+# Normalized ranges, derived from the ones above with a reference wind speed
+U_REF = 10.0                   # [m/s]
+DEFICIT_LIM_NORM = tuple(v / U_REF for v in DEFICIT_LIM)
+U_LIM_NORM = (1 - DEFICIT_LIM_NORM[1], 1 - DEFICIT_LIM_NORM[0])  # U_wake/U_free = 1 - normalized deficit
+FIT_YLIM_NORM = tuple(v / U_REF for v in FIT_YLIM)
+
 
 def parse_args():
     p = argparse.ArgumentParser(
@@ -40,6 +50,9 @@ def parse_args():
     p.add_argument("--dpi", type=int, default=150, help="figure resolution")
     p.add_argument("--show", action="store_true",
                    help="also show the figures interactively")
+    p.add_argument("--normalize", action="store_true",
+                   help="also make the plots with y, z divided by D and U by the "
+                        "local free-stream U (saved with a '_norm' suffix)")
     return p.parse_args()
 
 
@@ -66,53 +79,77 @@ def load_aligned(fn_wake, fn_free):
     return ds_wake, ds_free
 
 
-def plot_plane(field, ds, R, cbar_label, cmap, title_prefix):
+def to_diameters(field, R):
+    """Express the y and z coordinates in rotor diameters."""
+    return field.assign_coords(y=field.y / (2 * R), z=field.z / (2 * R))
+
+
+def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False):
+    if norm:
+        field = to_diameters(field, R)
+    r_rotor, ylabel, zlabel = (0.5, "y/D [-]", "z/D [-]") if norm else (R, "y [m]", "z [m]")
+
     fig, ax = plt.subplots(figsize=(10, 5))
-    field.plot.pcolormesh(x="y", y="z", ax=ax, cmap=cmap,
+    field.plot.pcolormesh(x="y", y="z", ax=ax, cmap=cmap, vmin=clim[0], vmax=clim[1],
                           cbar_kwargs={"label": cbar_label})
 
     # Rotor disk outline (assumes y, z are relative to the rotor centre)
-    ax.add_patch(Circle((0, 0), R, fill=False, edgecolor="white",
+    ax.add_patch(Circle((0, 0), r_rotor, fill=False, edgecolor="white",
                         linestyle="--", linewidth=1))
 
     ax.set_aspect("equal")
-    ax.set_xlabel("y [m]")
-    ax.set_ylabel("z [m]")
+    ax.set_xlabel(ylabel)
+    ax.set_ylabel(zlabel)
     ax.set_title(f"{title_prefix} at x = {(ds.x.item()/(2*R)):.0f}D, "
                  f"t = {ds.t[0].item():.0f}–{ds.t[-1].item():.0f} s")
     return fig
 
 
-def plot_gaussian_fits(U_mean_diff, R):
+def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
+    """One figure per centerline profile (horizontal and vertical).
+
+    With norm=True, U_mean_diff is expected to be already divided by U_free;
+    the coordinates are converted to rotor diameters here."""
+    if norm:
+        U_mean_diff = to_diameters(U_mean_diff, R)
+        r_rotor, fmt, unit, A_unit, suffix = 0.5, ".2f", "D", "", "_norm"
+        ylabel = r"$(\overline{U}_{free} - \overline{U}_{wake}) / \overline{U}_{free}$ [-]"
+        ylim = FIT_YLIM_NORM
+    else:
+        r_rotor, fmt, unit, A_unit, suffix = R, ".1f", " m", " m/s", ""
+        ylabel = r"$\overline{U}_{free} - \overline{U}_{wake}$ [m/s]"
+        ylim = FIT_YLIM
+
     # Centerline profiles through the rotor centre, linearly interpolated to exactly z = 0 and y = 0
     U_diff_y = U_mean_diff.interp(z=0)
     U_diff_z = U_mean_diff.interp(y=0)
 
-    fits = {}
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
-    profiles = [("y", U_diff_y, f"Horizontal profile at z = {U_diff_y.z.item():.1f} m"),
-                ("z", U_diff_z, f"Vertical profile at y = {U_diff_z.y.item():.1f} m")]
-    for ax, (dim, profile, location) in zip(axes, profiles):
+    figs, fits = {}, {}
+    profiles = [("horizontal", "y", U_diff_y, f"Horizontal profile at x = {x_D:.0f}D, z = {U_diff_y.z.item():{fmt}}{unit}"),
+                ("vertical", "z", U_diff_z, f"Vertical profile at x = {x_D:.0f}D, y = {U_diff_z.y.item():{fmt}}{unit}")]
+    for name, dim, profile, location in profiles:
         s = profile[dim].values
-        popt, pcov = curve_fit(gaussian, s, profile.values, p0=[profile.max().item(), 0, R])
+        popt, pcov = curve_fit(gaussian, s, profile.values, p0=[profile.max().item(), 0, r_rotor])
         fits[dim] = popt
         A, mu, sigma = popt
 
+        fig, ax = plt.subplots(figsize=(7, 4))
         s_fine = np.linspace(s.min(), s.max(), 500)
         ax.plot(s, profile.values, "o", markersize=3, label="LES")
         ax.plot(s_fine, gaussian(s_fine, *popt), "-", label="Gaussian fit")
-        ax.axvspan(-R, R, color="grey", alpha=0.15, label="Rotor")
-        ax.set_xlabel(f"{dim} [m]")
+        ax.axvspan(-r_rotor, r_rotor, color="grey", alpha=0.15, label="Rotor")
+        ax.axhline(0, color="black", linewidth=0.8)
+        ax.set_ylim(ylim)
+        ax.set_xlabel(f"{dim}/D [-]" if norm else f"{dim} [m]")
+        ax.set_ylabel(ylabel)
         ax.set_title(f"{location}\n"
-                     rf"$A$ = {A:.2f} m/s, $\mu$ = {mu:.1f} m, $\sigma$ = {sigma:.1f} m",
+                     rf"$A$ = {A:.2f}{A_unit}, $\mu$ = {mu:{fmt}}{unit}, $\sigma$ = {sigma:{fmt}}{unit}",
                      fontsize=10)
-
-    axes[0].set_ylabel(r"$\overline{U}_{free} - \overline{U}_{wake}$ [m/s]")
-    # Single legend for both panels, below the axes so it does not cover the data
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", ncol=len(labels), frameon=False)
-    fig.tight_layout(rect=(0, 0.07, 1, 1))
-    return fig, fits
+        # Legend below the axes so it does not cover the data
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+        fig.tight_layout()
+        figs[f"gaussian_fit_{name}{suffix}"] = fig
+    return figs, fits
 
 
 def main():
@@ -130,18 +167,36 @@ def main():
 
     U_label = r"$\overline{U}$ [m/s]"
     figs = {
-        "U_mean_wake": plot_plane(U_mean_wake, ds_wake, R, U_label, "viridis", "Time-averaged U"),
-        "U_mean_free": plot_plane(U_mean_free, ds_free, ds_free["R"].item(), U_label, "viridis", "Time-averaged U"),
+        "U_mean_wake": plot_plane(U_mean_wake, ds_wake, R, U_label, "viridis", "Time-averaged U", U_LIM),
+        "U_mean_free": plot_plane(U_mean_free, ds_free, ds_free["R"].item(), U_label, "viridis", "Time-averaged U", U_LIM),
         "U_mean_deficit": plot_plane(
             U_mean_diff, ds_wake, R,
             r"$\overline{U}_{free}$ - $\overline{U}_{wake}$ [m/s]",
             "bwr",
-            "Time-averaged U deficit"),
+            "Time-averaged U deficit", DEFICIT_LIM),
     }
-    figs["gaussian_fit"], fits = plot_gaussian_fits(U_mean_diff, R)
+    x_D = ds_wake.x.item() / (2 * R)
+    fit_figs, fits = plot_gaussian_fits(U_mean_diff, R, x_D)
+    figs.update(fit_figs)
 
     for dim, (A, mu, sigma) in fits.items():
         print(f"{dim}: A = {A:.3f} m/s, mu = {mu:.2f} m, sigma = {sigma:.2f} m = {sigma/(2*R):.3f}D")
+
+    if args.normalize:
+        # Normalized by the local free stream, so the free-flow plane itself (= 1) is not plotted
+        figs["U_mean_wake_norm"] = plot_plane(
+            U_mean_wake / U_mean_free, ds_wake, R,
+            r"$\overline{U}_{wake} / \overline{U}_{free}$ [-]",
+            "viridis", "Time-averaged normalized U", U_LIM_NORM, norm=True)
+        figs["U_mean_deficit_norm"] = plot_plane(
+            U_mean_diff / U_mean_free, ds_wake, R,
+            r"$(\overline{U}_{free} - \overline{U}_{wake}) / \overline{U}_{free}$ [-]",
+            "bwr", "Time-averaged normalized U deficit", DEFICIT_LIM_NORM, norm=True)
+        fit_figs_norm, fits_norm = plot_gaussian_fits(U_mean_diff / U_mean_free, R, x_D, norm=True)
+        figs.update(fit_figs_norm)
+
+        for dim, (A, mu, sigma) in fits_norm.items():
+            print(f"{dim} (normalized): A = {A:.3f}, mu = {mu:.3f}D, sigma = {sigma:.3f}D")
 
     for name, fig in figs.items():
         out = args.out_dir / f"{args.wake.stem}_{name}.png"
