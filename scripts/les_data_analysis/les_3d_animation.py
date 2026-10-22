@@ -5,12 +5,12 @@ the result is saved as a GIF. Same as the 3D view in
 notebooks/les_flow_analysis.ipynb.
 
 Usage (defaults use the test data in data/test_les_data):
-    python scripts/les_3d_animation.py
-    python scripts/les_3d_animation.py --hh path/to/Flowpos_hubheightplane.nc \
+    python scripts/les_data_analysis/les_3d_animation.py
+    python scripts/les_data_analysis/les_3d_animation.py --hh path/to/Flowpos_hubheightplane.nc \
         --yz path/to/Flowpos_05D.nc path/to/Flowpos_10D.nc \
         --out plots/les_U_3d_animation.gif --t-start 1000 --t-end 1060
 
-Run `python scripts/les_3d_animation.py --help` for all options.
+Run `python scripts/les_data_analysis/les_3d_animation.py --help` for all options.
 """
 import argparse
 from pathlib import Path
@@ -23,7 +23,7 @@ import xarray as xr  # noqa: E402
 from matplotlib.animation import FuncAnimation, PillowWriter  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection  # noqa: E402
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 DATA = REPO / "data" / "test_les_data"
 
 
