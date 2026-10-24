@@ -41,7 +41,7 @@ def parse_args():
     p = argparse.ArgumentParser(
         description=__doc__.split("\n\n")[0],
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    p.add_argument("--wake", type=Path, default=DATA / "Flowpos_10D.nc",
+    p.add_argument("--wake", type=Path, default=DATA / "Flowpos_05D.nc",
                    help="waked y-z plane file")
     p.add_argument("--free", type=Path, default=DATA / "Flowpos_n2D.nc",
                    help="free-stream (upstream) y-z plane file")
@@ -130,8 +130,11 @@ def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
     for name, dim, profile, location in profiles:
         s = profile[dim].values
         popt, pcov = curve_fit(gaussian, s, profile.values, p0=[profile.max().item(), 0, r_rotor])
-        fits[dim] = popt
         A, mu, sigma = popt
+        # Coefficient of determination over all fitted points
+        residuals = profile.values - gaussian(s, *popt)
+        r2 = 1 - np.sum(residuals ** 2) / np.sum((profile.values - profile.values.mean()) ** 2)
+        fits[dim] = (A, mu, sigma, r2)
 
         fig, ax = plt.subplots(figsize=(7, 4))
         s_fine = np.linspace(s.min(), s.max(), 500)
@@ -143,7 +146,7 @@ def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
         ax.set_xlabel(f"{dim}/D [-]" if norm else f"{dim} [m]")
         ax.set_ylabel(ylabel)
         ax.set_title(f"{location}\n"
-                     rf"$A$ = {A:.2f}{A_unit}, $\mu$ = {mu:{fmt}}{unit}, $\sigma$ = {sigma:{fmt}}{unit}",
+                     rf"$A$ = {A:.2f}{A_unit}, $\mu$ = {mu:{fmt}}{unit}, $\sigma$ = {sigma:{fmt}}{unit} ($R^2$ = {r2:.2f})",
                      fontsize=10)
         # Legend below the axes so it does not cover the data
         ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
@@ -179,8 +182,8 @@ def main():
     fit_figs, fits = plot_gaussian_fits(U_mean_diff, R, x_D)
     figs.update(fit_figs)
 
-    for dim, (A, mu, sigma) in fits.items():
-        print(f"{dim}: A = {A:.3f} m/s, mu = {mu:.2f} m, sigma = {sigma:.2f} m = {sigma/(2*R):.3f}D")
+    for dim, (A, mu, sigma, r2) in fits.items():
+        print(f"{dim}: A = {A:.3f} m/s, mu = {mu:.2f} m, sigma = {sigma:.2f} m = {sigma/(2*R):.3f}D, R2 = {r2:.3f}")
 
     if args.normalize:
         # Normalized by the local free stream, so the free-flow plane itself (= 1) is not plotted
@@ -195,8 +198,8 @@ def main():
         fit_figs_norm, fits_norm = plot_gaussian_fits(U_mean_diff / U_mean_free, R, x_D, norm=True)
         figs.update(fit_figs_norm)
 
-        for dim, (A, mu, sigma) in fits_norm.items():
-            print(f"{dim} (normalized): A = {A:.3f}, mu = {mu:.3f}D, sigma = {sigma:.3f}D")
+        for dim, (A, mu, sigma, r2) in fits_norm.items():
+            print(f"{dim} (normalized): A = {A:.3f}, mu = {mu:.3f}D, sigma = {sigma:.3f}D, R2 = {r2:.3f}")
 
     for name, fig in figs.items():
         out = args.out_dir / f"{args.wake.stem}_{name}.png"
