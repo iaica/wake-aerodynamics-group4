@@ -7,7 +7,9 @@ def main():
 
     # Load LES data
     fn = "./data/test_les_data/Flowpos_05D.nc"
+    ds_up = xr.open_dataset("../data/test_les_data/Flowpos_n2D.nc")
     ds_les = xr.open_dataset(fn)
+    U_up = ds_up["U"].squeeze("x", drop=True)
 
     # Define time interval for analysis
     t_start = 1000
@@ -26,9 +28,19 @@ def main():
           .transpose("t", "z", "y")
           .load())
 
+    
+    # Time-averaged, laterally averaged vertical profile U0(z)
+    U0_z = U_up.mean(dim=("t", "y"))
+
+    # Put it on exactly the same z-points as the wake plane
+    U0_z = U0_z.interp(z=U.z)
+
+    # Shape (nz, 1) so it broadcasts over y in wake_centre
+    U0_prof = U0_z.values[:, None]
+
     # Create meshgrid for y and z coordinates
     yg, zg = np.meshgrid(U.y.values, U.z.values)
-    centers = np.array([wake_centre(yg, zg, U.isel(t=i).values, U0, R=R) for i in range(U.sizes["t"])])
+    centers = np.array([wake_centre(yg, zg, U.isel(t=i).values, U0_prof, R=R) for i in range(U.sizes["t"])])
 
     # Plot the wake centres
     plt.figure(figsize=(8, 6))
