@@ -51,7 +51,7 @@ def parse_args():
     p.add_argument("--show", action="store_true",
                    help="also show the figures interactively")
     p.add_argument("--normalize", action="store_true",
-                   help="also make the plots with y, z divided by D and U by the "
+                   help="also make the plots with y, z divided by R and U by the "
                         "local free-stream U (saved with a '_norm' suffix)")
     return p.parse_args()
 
@@ -79,15 +79,15 @@ def load_aligned(fn_wake, fn_free):
     return ds_wake, ds_free
 
 
-def to_diameters(field, R):
-    """Express the y and z coordinates in rotor diameters."""
-    return field.assign_coords(y=field.y / (2 * R), z=field.z / (2 * R))
+def to_radii(field, R):
+    """Express the y and z coordinates in rotor radii."""
+    return field.assign_coords(y=field.y / R, z=field.z / R)
 
 
 def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False):
     if norm:
-        field = to_diameters(field, R)
-    r_rotor, ylabel, zlabel = (0.5, "y/D [-]", "z/D [-]") if norm else (R, "y [m]", "z [m]")
+        field = to_radii(field, R)
+    r_rotor, ylabel, zlabel = (1.0, "y/R [-]", "z/R [-]") if norm else (R, "y [m]", "z [m]")
 
     fig, ax = plt.subplots(figsize=(10, 5))
     field.plot.pcolormesh(x="y", y="z", ax=ax, cmap=cmap, vmin=clim[0], vmax=clim[1],
@@ -109,10 +109,10 @@ def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
     """One figure per centerline profile (horizontal and vertical).
 
     With norm=True, U_mean_diff is expected to be already divided by U_free;
-    the coordinates are converted to rotor diameters here."""
+    the coordinates are converted to rotor radii here."""
     if norm:
-        U_mean_diff = to_diameters(U_mean_diff, R)
-        r_rotor, fmt, unit, A_unit, suffix = 0.5, ".2f", "D", "", "_norm"
+        U_mean_diff = to_radii(U_mean_diff, R)
+        r_rotor, fmt, unit, A_unit, suffix = 1.0, ".2f", "R", "", "_norm"
         ylabel = r"$(\overline{U}_{free} - \overline{U}_{wake}) / \overline{U}_{free}$ [-]"
         ylim = FIT_YLIM_NORM
     else:
@@ -143,7 +143,7 @@ def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
         ax.axvspan(-r_rotor, r_rotor, color="grey", alpha=0.15, label="Rotor")
         ax.axhline(0, color="black", linewidth=0.8)
         ax.set_ylim(ylim)
-        ax.set_xlabel(f"{dim}/D [-]" if norm else f"{dim} [m]")
+        ax.set_xlabel(f"{dim}/R [-]" if norm else f"{dim} [m]")
         ax.set_ylabel(ylabel)
         ax.set_title(f"{location}\n"
                      rf"$A$ = {A:.2f}{A_unit}, $\mu$ = {mu:{fmt}}{unit}, $\sigma$ = {sigma:{fmt}}{unit} ($R^2$ = {r2:.2f})",
@@ -199,7 +199,7 @@ def main():
         figs.update(fit_figs_norm)
 
         for dim, (A, mu, sigma, r2) in fits_norm.items():
-            print(f"{dim} (normalized): A = {A:.3f}, mu = {mu:.3f}D, sigma = {sigma:.3f}D, R2 = {r2:.3f}")
+            print(f"{dim} (normalized): A = {A:.3f}, mu = {mu:.3f}R, sigma = {sigma:.3f}R, R2 = {r2:.3f}")
 
     for name, fig in figs.items():
         out = args.out_dir / f"{args.wake.stem}_{name}.png"
