@@ -5,15 +5,20 @@ import scipy.stats as stats
 
 def main():
 
+
+    # Output folder for figures
+    out_dir = "/zhome/d6/f/230449/courses/wake_dynamics/project/plots/sigma_meandering"
+    dist = "05D"  # distance identifier for the plot filenames
+
     # Load LES data
-    fn = "./data/test_les_data/Flowpos_05D.nc"
-    ds_up = xr.open_dataset("../data/test_les_data/Flowpos_n2D.nc")
+    fn = f"/work3/emlh/IgnacioJoey/flowdata/Flowpos_{dist}.nc"
+    ds_up = xr.open_dataset("/work3/emlh/IgnacioJoey/flowdata/Flowpos_n2D.nc")
     ds_les = xr.open_dataset(fn)
     U_up = ds_up["U"].squeeze("x", drop=True)
 
     # Define time interval for analysis
     t_start = 1000
-    t_end = 1060
+    t_end = 4600
 
     # Define reference velocity and rotor radius
     U0 = 8.0  # [m/s] reference (freestream)
@@ -43,23 +48,23 @@ def main():
     centers = np.array([wake_centre(yg, zg, U.isel(t=i).values, U0_prof, R=R) for i in range(U.sizes["t"])])
 
     # Plot the wake centres
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(10, 5))
     plt.plot(U.t.values, centers[:, 0], label='Yc (wake centre in y)')
     plt.plot(U.t.values, centers[:, 1], label='Zc (wake centre in z)')
-    plt.xlabel('Time')
-    plt.ylabel('Position')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Position normalized by rotor radius R [-]')
     plt.legend()
     plt.grid()
-    plt.show()
+    plt.savefig(f"{out_dir}/wake_centre_coordinates_{dist}.png")
 
     # yc, zc: wake-centre time series (e.g. in units of R), NaN where no centre was found
     yc = centers[:, 0]
     zc = centers[:, 1]
 
-    mu, sigma = plot_histogram_with_gaussian_fit_from_wake_centres(yc, zc, "Wake Centres")
+    mu, sigma = plot_histogram_with_gaussian_fit_from_wake_centres(yc, zc, "Wake Centres", out_dir, dist)
 
 
-def plot_histogram_with_gaussian_fit_from_wake_centres(yc,zc, label):
+def plot_histogram_with_gaussian_fit_from_wake_centres(yc,zc, label, out_dir, dist):
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
 
     for ax, s, label in zip(axes, [yc, zc], ["$Y_C/R$", "$Z_C/R$"]):
@@ -78,7 +83,7 @@ def plot_histogram_with_gaussian_fit_from_wake_centres(yc,zc, label):
 
     axes[0].set_ylabel("Probability density [-]")
     plt.tight_layout()
-    plt.show()
+    plt.savefig(f"{out_dir}/wake_centre_histogram_{dist}.png")
 
     return mu, sigma
 
