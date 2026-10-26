@@ -84,7 +84,7 @@ def to_radii(field, R):
     return field.assign_coords(y=field.y / R, z=field.z / R)
 
 
-def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False):
+def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False, rotor=True):
     if norm:
         field = to_radii(field, R)
     r_rotor, ylabel, zlabel = (1.0, "y/R [-]", "z/R [-]") if norm else (R, "y [m]", "z [m]")
@@ -94,8 +94,9 @@ def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False):
                           cbar_kwargs={"label": cbar_label})
 
     # Rotor disk outline (assumes y, z are relative to the rotor centre)
-    ax.add_patch(Circle((0, 0), r_rotor, fill=False, edgecolor="white",
-                        linestyle="--", linewidth=1))
+    if rotor:
+        ax.add_patch(Circle((0, 0), r_rotor, fill=False, edgecolor="white",
+                            linestyle="--", linewidth=1))
 
     ax.set_aspect("equal")
     ax.set_xlabel(ylabel)
@@ -105,7 +106,7 @@ def plot_plane(field, ds, R, cbar_label, cmap, title_prefix, clim, norm=False):
     return fig
 
 
-def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
+def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False, rotor=True):
     """One figure per centerline profile (horizontal and vertical).
 
     With norm=True, U_mean_diff is expected to be already divided by U_free;
@@ -140,7 +141,8 @@ def plot_gaussian_fits(U_mean_diff, R, x_D, norm=False):
         s_fine = np.linspace(s.min(), s.max(), 500)
         ax.plot(s, profile.values, "o", markersize=3, label="LES")
         ax.plot(s_fine, gaussian(s_fine, *popt), "-", label="Gaussian fit")
-        ax.axvspan(-r_rotor, r_rotor, color="grey", alpha=0.15, label="Rotor")
+        if rotor:
+            ax.axvspan(-r_rotor, r_rotor, color="grey", alpha=0.15, label="Rotor")
         ax.axhline(0, color="black", linewidth=0.8)
         ax.set_ylim(ylim)
         ax.set_xlabel(f"{dim}/R [-]" if norm else f"{dim} [m]")
