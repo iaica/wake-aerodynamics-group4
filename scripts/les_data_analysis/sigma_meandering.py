@@ -61,15 +61,17 @@ def main():
     yc = centers[:, 0]
     zc = centers[:, 1]
 
-    mu, sigma = plot_histogram_with_gaussian_fit_from_wake_centres(yc, zc, "Wake Centres", out_dir, dist)
+    mu_y, sigma_y, mu_z, sigma_z = plot_histogram_with_gaussian_fit_from_wake_centres(yc, zc, "Wake Centres", out_dir, dist)
 
 
 def plot_histogram_with_gaussian_fit_from_wake_centres(yc,zc, label, out_dir, dist):
     fig, axes = plt.subplots(1, 2, figsize=(10, 4), sharey=True)
+    fit = []  # mu_y, sigma_y, mu_z, sigma_z
 
     for ax, s, label in zip(axes, [yc, zc], ["$Y_C/R$", "$Z_C/R$"]):
         s = s[~np.isnan(s)]                      # drop frames where the centre was outside the box
         mu, sigma = s.mean(), s.std(ddof=1)
+        fit += [mu, sigma]
 
         ax.hist(s, bins="auto", density=True, alpha=0.5, label="LES")
         x = np.linspace(s.min(), s.max(), 200)
@@ -85,7 +87,7 @@ def plot_histogram_with_gaussian_fit_from_wake_centres(yc,zc, label, out_dir, di
     plt.tight_layout()
     plt.savefig(f"{out_dir}/wake_centre_histogram_{dist}.png")
 
-    return mu, sigma
+    return tuple(fit)
 
 def wake_centre(Y, Z, U, U0, y_hub=0.0, z_hub=0.0, R=1.0,
                 m=3, half_width_y=3.0, half_width_z=1.7,
