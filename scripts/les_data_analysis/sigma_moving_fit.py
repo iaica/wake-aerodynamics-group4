@@ -52,14 +52,14 @@ def parse_args():
     return p.parse_args()
 
 
-def load_frames(ds_wake, ds_free, t_start, t_end, stride):
-    """Load the selected frames of both planes as (t, z, y) arrays."""
-    U_wake = (ds_wake["U"].sel(t=slice(t_start, t_end))
+def load_frames(ds_wake, ds_free, t_start, t_end, stride, var="U"):
+    """Load the selected frames of variable `var` of both planes as (t, z, y) arrays."""
+    U_wake = (ds_wake[var].sel(t=slice(t_start, t_end))
               .isel(t=slice(None, None, stride))
               .squeeze("x")
               .transpose("t", "z", "y")
               .load())
-    U_free = (ds_free["U"].sel(t=U_wake.t.values)
+    U_free = (ds_free[var].sel(t=U_wake.t.values)
               .squeeze("x")
               .transpose("t", "z", "y")
               .load())
@@ -94,6 +94,20 @@ def moving_frame_mean(U, yc, zc, y_new, z_new):
         U_sum = U_sum + frame.values
     return xr.DataArray(U_sum / U.sizes["t"], coords={"z": z_new, "y": y_new},
                         dims=("z", "y"), name=f"{U.name}_moving_mean")
+
+
+def moving_frame_std(U, yc, zc, y_new, z_new):
+    """Standard deviation in time (about the time mean) of U in the frame moving
+    with the wake centre (yc, zc) [m]; frames are interpolated as in moving_frame_mean."""
+    U_sum, U_sq_sum = 0.0, 0.0
+    for i in range(U.sizes["t"]):
+        frame = U.isel(t=i).interp(y=y_new + yc[i], z=z_new + zc[i]).values  # linear
+        U_sum = U_sum + frame
+        U_sq_sum = U_sq_sum + frame ** 2
+    n = U.sizes["t"]
+    var = np.maximum(U_sq_sum / n - (U_sum / n) ** 2, 0.0)  # guard against round-off below 0
+    return xr.DataArray(np.sqrt(var), coords={"z": z_new, "y": y_new},
+                        dims=("z", "y"), name=f"{U.name}_moving_std")
 
 
 def relabel_moving(fig, norm=False, profile_dim=None):
